@@ -1,12 +1,12 @@
-import { Routes, Route } from 'react-router-dom';
-import Login from './pages/Login';
-import Register from './pages/Register';
-import Dashboard from './pages/Dashboard';
-import InterviewSetup from './pages/InterviewSetup';
-import InterviewRoom from './pages/InterviewRoom';
-import Report from './pages/Report';
-import History from './pages/History';
-import ProtectedRoute from './components/ProtectedRoute';
+import { Routes, Route } from "react-router-dom";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
+import Dashboard from "./pages/Dashboard";
+import InterviewSetup from "./pages/InterviewSetup";
+import InterviewRoom from "./pages/InterviewRoom";
+import Report from "./pages/Report";
+import History from "./pages/History";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 export default function App() {
   return (

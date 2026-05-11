@@ -5,9 +5,9 @@ const AuthContext = createContext();
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(localStorage.getItem("token"));
 
-  const login = (jwtToken) => {
-    localStorage.setItem("token", jwtToken);
-    setToken(jwtToken);
+  const login = (jwt) => {
+    localStorage.setItem("token", jwt);
+    setToken(jwt);
   };
 
   const logout = () => {
@@ -22,6 +22,4 @@ export function AuthProvider({ children }) {
   );
 }
 
-export function useAuth() {
-  return useContext(AuthContext);
-}
+export const useAuth = () => useContext(AuthContext);

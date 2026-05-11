@@ -13,21 +13,25 @@ import org.springframework.security.web.SecurityFilterChain;
 @Configuration
 public class SecurityConfig {
 
-    // Password encoder bean for hashing passwords
+    // Password encoder bean
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
-    // Security rules
+    // Security configuration
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                // Disable CSRF for REST APIs
+                // Disable CSRF for REST API
                 .csrf(AbstractHttpConfigurer::disable)
 
                 // Enable CORS
                 .cors(Customizer.withDefaults())
+
+                // Disable default login popup
+                .httpBasic(AbstractHttpConfigurer::disable)
+                .formLogin(AbstractHttpConfigurer::disable)
 
                 // Authorization rules
                 .authorizeHttpRequests(auth -> auth
