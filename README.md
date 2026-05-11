@@ -1,7 +1,5 @@
 # AI Interview Simulator with Emotion Feedback
 
-Hi Clara! This is a complete, zero-confusion guide to build your **AI Interview Simulator with Emotion Feedback** in **48 hours** using:
-
 * **Frontend:** React
 * **Backend:** Spring Boot
 * **Database:** MySQL
