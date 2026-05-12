@@ -1,16 +1,21 @@
 AI-Interviewer/
+│
 ├── backend/
+│   │
 │   ├── config/
 │   │   ├── CorsConfig.java
 │   │   └── SecurityConfig.java
 │   │
 │   ├── controller/
-│   │   └── AuthController.java
+│   │   ├── AuthController.java
+│   │   └── QuestionController.java
 │   │
 │   ├── dto/
 │   │   ├── AuthResponse.java
 │   │   ├── LoginRequest.java
-│   │   └── RegisterRequest.java
+│   │   ├── RegisterRequest.java
+│   │   ├── QuestionRequest.java
+│   │   └── QuestionResponse.java
 │   │
 │   ├── entity/
 │   │   └── User.java
@@ -22,10 +27,13 @@ AI-Interviewer/
 │   │   └── JwtService.java
 │   │
 │   └── service/
-│       └── AuthService.java
+│       ├── AuthService.java
+│       └── QuestionService.java
 │
 ├── frontend/
+│   │
 │   ├── src/
+│   │   │
 │   │   ├── pages/
 │   │   │   ├── Dashboard.jsx
 │   │   │   ├── History.jsx
@@ -46,8 +54,15 @@ AI-Interviewer/
 │   │   ├── services/
 │   │   │   └── api.js
 │   │   │
-│   │   └── utils/
+│   │   ├── utils/
+		videoUtils.js
+│   │   │
+│   │   ├── App.jsx
+│   │   ├── main.jsx
+│   │   └── index.css
 │   │
+│   ├── package.json
+│   ├── vite.config.js
 │   └── ...
 │
 └── ai/
@@ -56,6 +71,11 @@ AI-Interviewer/
     ├── evaluation.py
     └── app.py
 
+Video Recording	⏳ Next
+Speech Transcription	⏳ Pending
+Emotion Detection	⏳ Pending
+LLM Evaluation	⏳ Pending
+Feedback Dashboard	⏳ Pending
 
 Frontend:
 
@@ -152,28 +172,161 @@ export default function History() {
 
 InterviewRoom.jsx ->
 
-import Navbar from '../components/Navbar';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import Navbar from "../components/Navbar";
 
 export default function InterviewRoom() {
   const navigate = useNavigate();
 
+  const [questions, setQuestions] = useState([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isRecording, setIsRecording] = useState(false);
+
+  const videoRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const streamRef = useRef(null);
+  const chunksRef = useRef([]);
+
+  useEffect(() => {
+    const storedQuestions = JSON.parse(
+      localStorage.getItem("interviewQuestions") || "[]"
+    );
+
+    const storedIndex = Number(
+      localStorage.getItem("currentQuestionIndex") || "0"
+    );
+     setQuestions(storedQuestions);
+    setCurrentIndex(storedIndex);
+
+    startCamera();
+
+    return () => {
+      stopCamera();
+    };
+  }, []);
+
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+
+      streamRef.current = stream;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (error) {
+      console.error("Camera access denied:", error);
+      alert("Please allow camera and microphone access.");
+    }
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+    }
+  };
+
+  const startRecording = () => {
+    if (!streamRef.current) return;
+
+    chunksRef.current = [];
+
+    const mediaRecorder = new MediaRecorder(streamRef.current);
+    mediaRecorderRef.current = mediaRecorder;
+
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        chunksRef.current.push(event.data);
+      }
+    };
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(chunksRef.current, {
+        type: "video/webm",
+      });
+
+      const recordings = JSON.parse(
+        localStorage.getItem("recordings") || "[]"
+      );
+
+      recordings[currentIndex] = blob;
+      localStorage.setItem("recordings", JSON.stringify(recordings));
+
+      handleNextQuestion();
+    };
+
+    mediaRecorder.start();
+    setIsRecording(true);
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+     };
+
+  const handleNextQuestion = () => {
+    if (currentIndex + 1 < questions.length) {
+      const nextIndex = currentIndex + 1;
+      setCurrentIndex(nextIndex);
+      localStorage.setItem(
+        "currentQuestionIndex",
+        nextIndex.toString()
+      );
+    } else {
+      navigate("/report");
+    }
+  };
+
+  if (questions.length === 0) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white">
+        <Navbar />
+        <div className="p-8">No questions found.</div>
+      </div>
+    );
+  }
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <Navbar />
+
       <div className="max-w-5xl mx-auto p-8">
-        <h1 className="text-3xl font-bold mb-4">Tell me about yourself.</h1>
-        <div className="aspect-video bg-slate-800 rounded-3xl mb-6 flex items-center justify-center text-gray-400">
-          Webcam Preview
-        </div>
+        <p className="text-gray-400 mb-2">
+          Question {currentIndex + 1} of {questions.length}
+        </p>
+
+        <h1 className="text-3xl font-bold mb-6">
+          {questions[currentIndex]}
+        </h1>
+
+        <video
+          ref={videoRef}
+          autoPlay
+          muted
+          playsInline
+          className="w-full aspect-video bg-slate-800 rounded-3xl mb-6"
+        />
+
         <div className="flex gap-4">
-          <button className="px-6 py-3 bg-red-500 rounded-xl">Start Recording</button>
-          <button
-            onClick={() => navigate('/report')}
-            className="px-6 py-3 bg-emerald-600 rounded-xl"
-          >
-            Submit Answer
-          </button>
+          {!isRecording ? (
+            <button
+              onClick={startRecording}
+              className="px-6 py-3 bg-red-500 rounded-xl hover:bg-red-600"
+            >
+              Start Recording
+            </button>
+          ) : (
+            <button
+              onClick={stopRecording}
+              className="px-6 py-3 bg-emerald-600 rounded-xl hover:bg-emerald-700"
+            >
+              Stop Recording
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -181,34 +334,95 @@ export default function InterviewRoom() {
 }
 InterviewSetup.jsx ->
 
-import Navbar from '../components/Navbar';
-import { useNavigate } from 'react-router-dom';
-
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import Navbar from "../components/Navbar";
+import api from "../services/api";
 
 export default function InterviewSetup() {
   const navigate = useNavigate();
 
+  const [role, setRole] = useState("Software Engineer");
+  const [difficulty, setDifficulty] = useState("Medium");
+  const [count, setCount] = useState(5);
+  const [loading, setLoading] = useState(false);
+
+  const handleStart = async () => {
+    try {
+      setLoading(true);
+
+      const response = await api.post("/questions/generate", {
+        role,
+        difficulty,
+        count,
+      });
+      const questions = response.data.questions;
+
+      localStorage.setItem(
+        "interviewQuestions",
+        JSON.stringify(questions)
+      );
+
+      localStorage.setItem("currentQuestionIndex", "0");
+
+      navigate("/interview");
+    } catch (error) {
+      console.error("Failed to generate questions", error);
+      alert("Failed to generate questions.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <Navbar />
+
       <div className="max-w-3xl mx-auto p-8">
         <h1 className="text-3xl font-bold mb-6">Interview Setup</h1>
-        <select className="w-full p-4 rounded-xl bg-slate-800 mb-4">
-          <option>Software Engineer</option>
-          <option>Data Scientist</option>
-          <option>Frontend Developer</option>
-        </select>
-        <button
-          onClick={() => navigate('/interview')}
-          className="px-6 py-3 bg-violet-600 rounded-xl"
+        <label className="block mb-2">Role</label>
+        <select
+          value={role}
+          onChange={(e) => setRole(e.target.value)}
+          className="w-full p-4 rounded-xl bg-slate-800 mb-4"
         >
-          Start Interview
+          <option>Software Engineer</option>
+          <option>Frontend Developer</option>
+          <option>Data Scientist</option>
+        </select>
+
+        <label className="block mb-2">Difficulty</label>
+        <select
+          value={difficulty}
+          onChange={(e) => setDifficulty(e.target.value)}
+          className="w-full p-4 rounded-xl bg-slate-800 mb-4"
+        >
+          <option>Easy</option>
+          <option>Medium</option>
+          <option>Hard</option>
+        </select>
+
+        <label className="block mb-2">Number of Questions</label>
+        <input
+        type="number"
+          min="1"
+          max="10"
+          value={count}
+          onChange={(e) => setCount(Number(e.target.value))}
+          className="w-full p-4 rounded-xl bg-slate-800 mb-6"
+        />
+
+        <button
+          onClick={handleStart}
+          disabled={loading}
+          className="px-6 py-3 bg-violet-600 rounded-xl hover:bg-violet-700"
+        >
+          {loading ? "Generating..." : "Start Interview"}
         </button>
       </div>
     </div>
   );
 }
-
 Login.jsx ->
 
 import { useState } from "react";
@@ -627,6 +841,7 @@ public class SecurityConfig {
         return http.build();
     }
 }
+
 AuthController.java->
 
 package com.kuheli.backend.controller;
