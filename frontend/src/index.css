@@ -1,8 +1,7 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
 body {
-  @apply bg-slate-950 text-white;
+  background-color: #020617; /* Tailwind slate-950 */
+  color: white;
   font-family: Inter, sans-serif;
 }
