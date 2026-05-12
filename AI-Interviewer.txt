@@ -1,0 +1,808 @@
+AI-Interviewer/
+├── backend/
+│   ├── config/
+│   │   ├── CorsConfig.java
+│   │   └── SecurityConfig.java
+│   │
+│   ├── controller/
+│   │   └── AuthController.java
+│   │
+│   ├── dto/
+│   │   ├── AuthResponse.java
+│   │   ├── LoginRequest.java
+│   │   └── RegisterRequest.java
+│   │
+│   ├── entity/
+│   │   └── User.java
+│   │
+│   ├── repository/
+│   │   └── UserRepository.java
+│   │
+│   ├── security/
+│   │   └── JwtService.java
+│   │
+│   └── service/
+│       └── AuthService.java
+│
+├── frontend/
+│   ├── src/
+│   │   ├── pages/
+│   │   │   ├── Dashboard.jsx
+│   │   │   ├── History.jsx
+│   │   │   ├── InterviewRoom.jsx
+│   │   │   ├── InterviewSetup.jsx
+│   │   │   ├── Login.jsx
+│   │   │   ├── Register.jsx
+│   │   │   └── Report.jsx
+│   │   │
+│   │   ├── components/
+│   │   │   ├── Navbar.jsx
+│   │   │   ├── ProtectedRoute.jsx
+│   │   │   └── ScoreCard.jsx
+│   │   │
+│   │   ├── context/
+│   │   │   └── AuthContext.jsx
+│   │   │
+│   │   ├── services/
+│   │   │   └── api.js
+│   │   │
+│   │   └── utils/
+│   │
+│   └── ...
+│
+└── ai/
+    ├── transcription.py
+    ├── emotion.py
+    ├── evaluation.py
+    └── app.py
+
+
+Frontend:
+
+main.jsx->
+
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
+import App from './App';
+import './index.css';
+import { AuthProvider } from './context/AuthContext';
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <BrowserRouter>
+      <AuthProvider>
+        <App />
+      </AuthProvider>
+    </BrowserRouter>
+  </React.StrictMode>
+);
+
+App.jsx->
+
+import { Routes, Route } from "react-router-dom";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
+import Dashboard from "./pages/Dashboard";
+import InterviewSetup from "./pages/InterviewSetup";
+import InterviewRoom from "./pages/InterviewRoom";
+import Report from "./pages/Report";
+import History from "./pages/History";
+import ProtectedRoute from "./components/ProtectedRoute";
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+
+      <Route element={<ProtectedRoute />}>
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/setup" element={<InterviewSetup />} />
+        <Route path="/interview" element={<InterviewRoom />} />
+        <Route path="/report" element={<Report />} />
+        <Route path="/history" element={<History />} />
+      </Route>
+    </Routes>
+  );
+}
+
+Dashboard.jsx->
+
+import Navbar from '../components/Navbar';
+import { Link } from 'react-router-dom';
+
+export default function Dashboard() {
+  return (
+    <div className="min-h-screen bg-slate-950 text-white">
+      <Navbar />
+      <div className="p-8 max-w-6xl mx-auto">
+        <h1 className="text-4xl font-bold mb-2">Welcome Clara 👋</h1>
+        <p className="text-gray-400 mb-8">Practice interviews and improve with AI feedback.</p>
+
+        <div className="grid md:grid-cols-3 gap-6">
+          <div className="p-6 rounded-3xl bg-white/5 border border-white/10">
+            <h3 className="text-xl font-semibold mb-2">Start Interview</h3>
+            <p className="text-gray-400 mb-4">Choose a role and begin.</p>
+            <Link to="/setup" className="inline-block px-4 py-2 bg-violet-600 rounded-lg">Start</Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+History.jsx->
+
+import Navbar from '../components/Navbar';
+
+export default function History() {
+  return (
+    <div className="min-h-screen bg-slate-950 text-white">
+      <Navbar />
+      <div className="max-w-5xl mx-auto p-8">
+        <h1 className="text-4xl font-bold mb-6">Interview History</h1>
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
+          Previous interview attempts will appear here.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+InterviewRoom.jsx ->
+
+import Navbar from '../components/Navbar';
+import { useNavigate } from 'react-router-dom';
+
+export default function InterviewRoom() {
+  const navigate = useNavigate();
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-white">
+      <Navbar />
+      <div className="max-w-5xl mx-auto p-8">
+        <h1 className="text-3xl font-bold mb-4">Tell me about yourself.</h1>
+        <div className="aspect-video bg-slate-800 rounded-3xl mb-6 flex items-center justify-center text-gray-400">
+          Webcam Preview
+        </div>
+        <div className="flex gap-4">
+          <button className="px-6 py-3 bg-red-500 rounded-xl">Start Recording</button>
+          <button
+            onClick={() => navigate('/report')}
+            className="px-6 py-3 bg-emerald-600 rounded-xl"
+          >
+            Submit Answer
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+InterviewSetup.jsx ->
+
+import Navbar from '../components/Navbar';
+import { useNavigate } from 'react-router-dom';
+
+
+export default function InterviewSetup() {
+  const navigate = useNavigate();
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-white">
+      <Navbar />
+      <div className="max-w-3xl mx-auto p-8">
+        <h1 className="text-3xl font-bold mb-6">Interview Setup</h1>
+        <select className="w-full p-4 rounded-xl bg-slate-800 mb-4">
+          <option>Software Engineer</option>
+          <option>Data Scientist</option>
+          <option>Frontend Developer</option>
+        </select>
+        <button
+          onClick={() => navigate('/interview')}
+          className="px-6 py-3 bg-violet-600 rounded-xl"
+        >
+          Start Interview
+        </button>
+      </div>
+    </div>
+  );
+}
+
+Login.jsx ->
+
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
+import api from "../services/api";
+import { useAuth } from "../context/AuthContext";
+
+export default function Login() {
+  const navigate = useNavigate();
+  const { login } = useAuth();
+
+  const [form, setForm] = useState({
+    email: "",
+    password: "",
+  });
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleChange = (e) => {
+    setForm({
+      ...form,
+      [e.target.name]: e.target.value,
+    });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+
+    try {
+      const response = await api.post("/auth/login", form);
+
+      const token = response.data.token;
+      login(token);
+
+      navigate("/dashboard");
+    } catch (err) {
+      setError(
+        err.response?.data?.message || "Invalid email or password"
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-violet-950">
+      <motion.form
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        onSubmit={handleSubmit}
+        className="w-full max-w-md p-8 rounded-3xl bg-white/10 backdrop-blur-xl border border-white/10"
+      >
+        <h1 className="text-3xl font-bold mb-6">Welcome Back</h1>
+
+        {error && (
+          <p className="mb-4 text-red-400 text-sm">{error}</p>
+        )}
+
+        <input
+          name="email"
+          type="email"
+          placeholder="Email"
+          value={form.email}
+          onChange={handleChange}
+          className="w-full p-3 mb-4 rounded-xl bg-slate-800 outline-none"
+          required
+        />
+
+        <input
+          name="password"
+          type="password"
+          placeholder="Password"
+          value={form.password}
+          onChange={handleChange}
+          className="w-full p-3 mb-4 rounded-xl bg-slate-800 outline-none"
+          required
+        />
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full p-3 rounded-xl bg-violet-600 hover:bg-violet-700 transition"
+        >
+          {loading ? "Signing In..." : "Login"}
+        </button>
+
+        <p className="mt-4 text-center text-gray-400">
+          Don't have an account?{" "}
+          <Link to="/register" className="text-violet-400">
+            Register
+          </Link>
+        </p>
+      </motion.form>
+    </div>
+  );
+}
+
+Register.jsx->
+
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
+import api from "../services/api";
+
+export default function Register() {
+  const navigate = useNavigate();
+
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+  });
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleChange = (e) => {
+    setForm({
+      ...form,
+      [e.target.name]: e.target.value,
+    });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+
+    try {
+      await api.post("/auth/register", form);
+      navigate("/");
+    } catch (err) {
+      setError(
+        err.response?.data?.message || "Registration failed"
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-violet-950">
+      <motion.form
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        onSubmit={handleSubmit}
+        className="w-full max-w-md p-8 rounded-3xl bg-white/10 backdrop-blur-xl border border-white/10"
+      >
+        <h1 className="text-3xl font-bold mb-6">Create Account</h1>
+
+        {error && (
+          <p className="mb-4 text-red-400 text-sm">{error}</p>
+        )}
+
+        <input
+          name="name"
+          placeholder="Name"
+          value={form.name}
+          onChange={handleChange}
+          className="w-full p-3 mb-4 rounded-xl bg-slate-800 outline-none"
+          required
+        />
+
+        <input
+          name="email"
+          type="email"
+          placeholder="Email"
+          value={form.email}
+          onChange={handleChange}
+          className="w-full p-3 mb-4 rounded-xl bg-slate-800 outline-none"
+          required
+        />
+
+        <input
+          name="password"
+          type="password"
+          placeholder="Password"
+          value={form.password}
+          onChange={handleChange}
+          className="w-full p-3 mb-4 rounded-xl bg-slate-800 outline-none"
+          required
+        />
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full p-3 rounded-xl bg-violet-600 hover:bg-violet-700 transition"
+        >
+          {loading ? "Creating Account..." : "Register"}
+        </button>
+
+        <p className="mt-4 text-center text-gray-400">
+          Already have an account?{" "}
+          <Link to="/" className="text-violet-400">
+            Login
+          </Link>
+        </p>
+      </motion.form>
+    </div>
+  );
+}
+
+Report.jsx->
+
+import Navbar from '../components/Navbar';
+import ScoreCard from '../components/ScoreCard';
+
+export default function Report() {
+  return (
+    <div className="min-h-screen bg-slate-950 text-white">
+      <Navbar />
+      <div className="max-w-6xl mx-auto p-8">
+        <h1 className="text-4xl font-bold mb-8">Interview Feedback</h1>
+
+        <div className="grid md:grid-cols-3 gap-6 mb-8">
+          <ScoreCard title="Overall Score" score={84} />
+          <ScoreCard title="Confidence" score={78} />
+          <ScoreCard title="Answer Quality" score={88} />
+        </div>
+
+        <div className="bg-white/5 rounded-2xl p-6 border border-white/10">
+          <h2 className="text-2xl font-semibold mb-4">Suggestions</h2>
+          <ul className="list-disc pl-6 space-y-2 text-gray-300">
+            <li>Use the STAR method.</li>
+            <li>Maintain better eye contact.</li>
+            <li>Reduce filler words.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+Navbar.jsx->
+
+import { Link, useNavigate } from 'react-router-dom';
+import { Brain, LogOut } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+
+export default function Navbar() {
+  const { logout } = useAuth();
+
+ const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/');
+  };
+
+  return (
+    <nav className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-white/5 backdrop-blur-xl">
+      <Link to="/dashboard" className="flex items-center gap-2 text-xl font-bold">
+        <Brain className="text-violet-400" /> AI Interviewer
+      </Link>
+      <button
+        onClick={handleLogout}
+        className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600"
+      >
+        <LogOut size={18} /> Logout
+      </button>
+    </nav>
+  );
+}
+
+ProtectedRoute.jsx->
+
+import { Navigate, Outlet } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+
+export default function ProtectedRoute() {
+  const { token } = useAuth();
+
+  return token ? <Outlet /> : <Navigate to="/" replace />;
+}
+
+ScoreCard.jsx->
+
+export default function ScoreCard({ title, score }) {
+  return (
+    <div className="bg-white/5 border border-white/10 rounded-2xl p-6 shadow-lg">
+      <h3 className="text-gray-300 mb-2">{title}</h3>
+      <p className="text-4xl font-bold text-violet-400">{score}%</p>
+    </div>
+  );
+}
+
+AuthContext.jsx->
+
+import { createContext, useContext, useState } from "react";
+
+const AuthContext = createContext();
+
+export function AuthProvider({ children }) {
+  const [token, setToken] = useState(localStorage.getItem("token"));
+
+  const login = (jwt) => {
+    localStorage.setItem("token", jwt);
+    setToken(jwt);
+  };
+
+  const logout = () => {
+    localStorage.removeItem("token");
+    setToken(null);
+  };
+
+  return (
+    <AuthContext.Provider value={{ token, login, logout }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export const useAuth = () => useContext(AuthContext);
+
+api.js->
+
+import axios from 'axios';
+
+const api = axios.create({
+  baseURL: 'http://localhost:8080/api',
+});
+
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+export default api;
+
+Backend:
+
+CorsConfig.java->
+
+package com.kuheli.backend.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.cors.CorsConfigurationSource;
+
+import java.util.List;
+
+@Configuration
+public class CorsConfig {
+
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+
+        config.setAllowedOrigins(List.of("http://localhost:5173"));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        config.setAllowedHeaders(List.of("*"));
+        config.setAllowCredentials(true);
+
+        UrlBasedCorsConfigurationSource source =
+                new UrlBasedCorsConfigurationSource();
+
+        source.registerCorsConfiguration("/**", config);
+
+        return source;
+    }
+}
+
+SecurityConfig.java->
+
+package com.kuheli.backend.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
+
+@Configuration
+public class SecurityConfig {
+
+    // Password encoder bean
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+
+    // Security configuration
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        http
+                // Disable CSRF for REST API
+                .csrf(AbstractHttpConfigurer::disable)
+
+                // Enable CORS
+                .cors(Customizer.withDefaults())
+
+                // Disable default login popup
+                .httpBasic(AbstractHttpConfigurer::disable)
+                .formLogin(AbstractHttpConfigurer::disable)
+
+                // Authorization rules
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        .anyRequest().authenticated()
+                );
+
+        return http.build();
+    }
+}
+AuthController.java->
+
+package com.kuheli.backend.controller;
+
+import com.kuheli.backend.dto.*;
+import com.kuheli.backend.service.AuthService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/auth")
+@RequiredArgsConstructor
+@CrossOrigin(origins = "http://localhost:5173")
+public class AuthController {
+
+    private final AuthService authService;
+
+    @PostMapping("/register")
+    public AuthResponse register(@RequestBody RegisterRequest request) {
+        return authService.register(request);
+    }
+
+    @PostMapping("/login")
+    public AuthResponse login(@RequestBody LoginRequest request) {
+        return authService.login(request);
+    }
+}
+AuthResponse.java->
+
+package com.kuheli.backend.dto;
+
+public record AuthResponse(
+        String token,
+        String message
+) {}
+
+LoginRequest.java->
+
+package com.kuheli.backend.dto;
+
+public record LoginRequest(
+        String email,
+        String password
+) {}
+
+RegisterRequest.java->
+
+package com.kuheli.backend.dto;
+
+public record RegisterRequest(
+        String name,
+        String email,
+        String password
+) {}
+
+User.java->
+
+package com.kuheli.backend.entity;
+
+import jakarta.persistence.*;
+import lombok.*;
+
+@Entity
+@Table(name = "users")
+@Getter @Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class User {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    private String name;
+
+    @Column(unique = true, nullable = false)
+    private String email;
+
+    @Column(nullable = false)
+    private String password;
+}
+
+UserRepository.java->
+
+package com.kuheli.backend.repository;
+
+import com.kuheli.backend.entity.User;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.Optional;
+
+public interface UserRepository extends JpaRepository<User, Long> {
+    Optional<User> findByEmail(String email);
+    boolean existsByEmail(String email);
+}
+
+JwtService.java->
+
+package com.kuheli.backend.security;
+
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
+import java.util.Date;
+
+@Service
+public class JwtService {
+
+    @Value("${jwt.secret}")
+    private String secret;
+
+    @Value("${jwt.expiration}")
+    private long expiration;
+
+    public String generateToken(String email) {
+        SecretKey key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+
+        return Jwts.builder()
+                .subject(email)
+                .issuedAt(new Date())
+                .expiration(new Date(System.currentTimeMillis() + expiration))
+                .signWith(key)
+                .compact();
+    }
+}
+
+AuthService.java->
+
+package com.kuheli.backend.service;
+
+import com.kuheli.backend.dto.*;
+import com.kuheli.backend.entity.User;
+import com.kuheli.backend.repository.UserRepository;
+import com.kuheli.backend.security.JwtService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+
+@Service
+@RequiredArgsConstructor
+public class AuthService {
+
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final JwtService jwtService;
+
+    public AuthResponse register(RegisterRequest request) {
+        if (userRepository.existsByEmail(request.email())) {
+            throw new RuntimeException("Email already exists");
+        }
+
+        User user = User.builder().name(request.name())
+                .email(request.email())
+                .password(passwordEncoder.encode(request.password()))
+                .build();
+
+        userRepository.save(user);
+
+        String token = jwtService.generateToken(user.getEmail());
+        return new AuthResponse(token, "Registration successful");
+    }
+
+    public AuthResponse login(LoginRequest request) {
+        User user = userRepository.findByEmail(request.email())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        if (!passwordEncoder.matches(request.password(), user.getPassword())) {
+            throw new RuntimeException("Invalid credentials");
+        }
+
+        String token = jwtService.generateToken(user.getEmail());
+        return new AuthResponse(token, "Login successful");
+    }
+}
+
