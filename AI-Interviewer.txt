@@ -67,11 +67,10 @@ AI-Interviewer/
 │
 └── ai/
     ├── transcription.py
-    ├── emotion.py
-    ├── evaluation.py
+    ├── requirements.txt
     └── app.py
 
-Video Recording	⏳ Next
+
 Speech Transcription	⏳ Pending
 Emotion Detection	⏳ Pending
 LLM Evaluation	⏳ Pending

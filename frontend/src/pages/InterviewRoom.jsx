@@ -8,12 +8,15 @@ export default function InterviewRoom() {
   const [questions, setQuestions] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
+  const [processing, setProcessing] = useState(false);
 
   const videoRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const streamRef = useRef(null);
   const chunksRef = useRef([]);
+  const hasMovedRef = useRef(false);
 
+  // Load questions and start camera
   useEffect(() => {
     const storedQuestions = JSON.parse(
       localStorage.getItem("interviewQuestions") || "[]"
@@ -22,7 +25,8 @@ export default function InterviewRoom() {
     const storedIndex = Number(
       localStorage.getItem("currentQuestionIndex") || "0"
     );
-     setQuestions(storedQuestions);
+
+    setQuestions(storedQuestions);
     setCurrentIndex(storedIndex);
 
     startCamera();
@@ -32,6 +36,7 @@ export default function InterviewRoom() {
     };
   }, []);
 
+  // Start webcam + mic
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -50,16 +55,19 @@ export default function InterviewRoom() {
     }
   };
 
+  // Stop camera
   const stopCamera = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
     }
   };
 
+  // Start recording
   const startRecording = () => {
-    if (!streamRef.current) return;
+    if (!streamRef.current || processing) return;
 
     chunksRef.current = [];
+    hasMovedRef.current = false;
 
     const mediaRecorder = new MediaRecorder(streamRef.current);
     mediaRecorderRef.current = mediaRecorder;
@@ -69,45 +77,109 @@ export default function InterviewRoom() {
         chunksRef.current.push(event.data);
       }
     };
-    mediaRecorder.onstop = () => {
+
+    mediaRecorder.onstop = async () => {
+      setIsRecording(false);
+      setProcessing(true);
+
       const blob = new Blob(chunksRef.current, {
         type: "video/webm",
       });
 
+      // Save recording file names
       const recordings = JSON.parse(
         localStorage.getItem("recordings") || "[]"
       );
+      recordings[currentIndex] = `answer-${currentIndex}.webm`;
+      localStorage.setItem(
+        "recordings",
+        JSON.stringify(recordings)
+      );
 
-      recordings[currentIndex] = blob;
-      localStorage.setItem("recordings", JSON.stringify(recordings));
+      // Send to FastAPI
+      const formData = new FormData();
+      formData.append(
+        "file",
+        blob,
+        `answer-${currentIndex}.webm`
+      );
 
-      handleNextQuestion();
+      try {
+        const response = await fetch(
+          "http://localhost:8000/transcribe",
+          {
+            method: "POST",
+            body: formData,
+          }
+        );
+
+        const data = await response.json();
+
+        const transcripts = JSON.parse(
+          localStorage.getItem("transcripts") || "[]"
+        );
+
+        transcripts[currentIndex] =
+          data.transcript || "No transcript available";
+
+        localStorage.setItem(
+          "transcripts",
+          JSON.stringify(transcripts)
+        );
+      } catch (error) {
+        console.error("Transcription failed:", error);
+
+        const transcripts = JSON.parse(
+          localStorage.getItem("transcripts") || "[]"
+        );
+
+        transcripts[currentIndex] = "Transcription failed";
+
+        localStorage.setItem(
+          "transcripts",
+          JSON.stringify(transcripts)
+        );
+      } finally {
+        setProcessing(false);
+        moveToNextQuestion();
+      }
     };
 
     mediaRecorder.start();
     setIsRecording(true);
   };
 
+  // Stop recording
   const stopRecording = () => {
-    if (mediaRecorderRef.current) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-    }
-     };
+    const recorder = mediaRecorderRef.current;
 
-  const handleNextQuestion = () => {
-    if (currentIndex + 1 < questions.length) {
-      const nextIndex = currentIndex + 1;
+    if (!recorder) return;
+
+    if (recorder.state !== "inactive") {
+      recorder.stop();
+    }
+  };
+
+  // Move to next question exactly once
+  const moveToNextQuestion = () => {
+    if (hasMovedRef.current) return;
+    hasMovedRef.current = true;
+
+    const nextIndex = currentIndex + 1;
+
+    if (nextIndex < questions.length) {
       setCurrentIndex(nextIndex);
       localStorage.setItem(
         "currentQuestionIndex",
         nextIndex.toString()
       );
     } else {
+      localStorage.removeItem("currentQuestionIndex");
       navigate("/report");
     }
   };
 
+  // No questions
   if (questions.length === 0) {
     return (
       <div className="min-h-screen bg-slate-950 text-white">
@@ -116,6 +188,7 @@ export default function InterviewRoom() {
       </div>
     );
   }
+
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <Navbar />
@@ -141,19 +214,27 @@ export default function InterviewRoom() {
           {!isRecording ? (
             <button
               onClick={startRecording}
-              className="px-6 py-3 bg-red-500 rounded-xl hover:bg-red-600"
+              disabled={processing}
+              className="px-6 py-3 bg-red-500 rounded-xl hover:bg-red-600 disabled:opacity-50"
             >
               Start Recording
             </button>
           ) : (
             <button
               onClick={stopRecording}
-              className="px-6 py-3 bg-emerald-600 rounded-xl hover:bg-emerald-700"
+              disabled={processing}
+              className="px-6 py-3 bg-emerald-600 rounded-xl hover:bg-emerald-700 disabled:opacity-50"
             >
               Stop Recording
             </button>
           )}
         </div>
+
+        {processing && (
+          <p className="mt-4 text-yellow-400">
+            Processing your answer...
+          </p>
+        )}
       </div>
     </div>
   );
