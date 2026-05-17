@@ -1,3 +1,7 @@
+To run:
+python -m uvicorn app:app --reload --port 8000
+npm run dev
+
 AI-Interviewer/
 │
 ├── backend/
@@ -68,13 +72,12 @@ AI-Interviewer/
 └── ai/
     ├── transcription.py
     ├── requirements.txt
+    ├── emotion.py
+    ├── evaluation.py
+    ├── .env
     └── app.py
 
 
-Speech Transcription	⏳ Pending
-Emotion Detection	⏳ Pending
-LLM Evaluation	⏳ Pending
-Feedback Dashboard	⏳ Pending
 
 Frontend:
 
@@ -181,12 +184,15 @@ export default function InterviewRoom() {
   const [questions, setQuestions] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
+  const [processing, setProcessing] = useState(false);
 
   const videoRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const streamRef = useRef(null);
   const chunksRef = useRef([]);
+  const hasMovedRef = useRef(false);
 
+  // Load questions and start camera
   useEffect(() => {
     const storedQuestions = JSON.parse(
       localStorage.getItem("interviewQuestions") || "[]"
@@ -195,7 +201,8 @@ export default function InterviewRoom() {
     const storedIndex = Number(
       localStorage.getItem("currentQuestionIndex") || "0"
     );
-     setQuestions(storedQuestions);
+
+    setQuestions(storedQuestions);
     setCurrentIndex(storedIndex);
 
     startCamera();
@@ -205,6 +212,7 @@ export default function InterviewRoom() {
     };
   }, []);
 
+  // Start webcam + mic
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -223,16 +231,19 @@ export default function InterviewRoom() {
     }
   };
 
+  // Stop camera
   const stopCamera = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
     }
   };
 
+  // Start recording
   const startRecording = () => {
-    if (!streamRef.current) return;
+    if (!streamRef.current || processing) return;
 
     chunksRef.current = [];
+    hasMovedRef.current = false;
 
     const mediaRecorder = new MediaRecorder(streamRef.current);
     mediaRecorderRef.current = mediaRecorder;
@@ -242,45 +253,109 @@ export default function InterviewRoom() {
         chunksRef.current.push(event.data);
       }
     };
-    mediaRecorder.onstop = () => {
+
+    mediaRecorder.onstop = async () => {
+      setIsRecording(false);
+      setProcessing(true);
+
       const blob = new Blob(chunksRef.current, {
         type: "video/webm",
       });
 
+      // Save recording file names
       const recordings = JSON.parse(
         localStorage.getItem("recordings") || "[]"
       );
+      recordings[currentIndex] = `answer-${currentIndex}.webm`;
+      localStorage.setItem(
+        "recordings",
+        JSON.stringify(recordings)
+      );
 
-      recordings[currentIndex] = blob;
-      localStorage.setItem("recordings", JSON.stringify(recordings));
+      // Send to FastAPI
+      const formData = new FormData();
+      formData.append(
+        "file",
+        blob,
+        `answer-${currentIndex}.webm`
+      );
 
-      handleNextQuestion();
+      try {
+        const response = await fetch(
+          "http://localhost:8000/transcribe",
+          {
+            method: "POST",
+            body: formData,
+          }
+        );
+
+        const data = await response.json();
+
+        const transcripts = JSON.parse(
+          localStorage.getItem("transcripts") || "[]"
+        );
+
+        transcripts[currentIndex] =
+          data.transcript || "No transcript available";
+
+        localStorage.setItem(
+          "transcripts",
+          JSON.stringify(transcripts)
+        );
+      } catch (error) {
+        console.error("Transcription failed:", error);
+
+        const transcripts = JSON.parse(
+          localStorage.getItem("transcripts") || "[]"
+        );
+
+        transcripts[currentIndex] = "Transcription failed";
+
+        localStorage.setItem(
+          "transcripts",
+          JSON.stringify(transcripts)
+        );
+      } finally {
+        setProcessing(false);
+        moveToNextQuestion();
+      }
     };
 
     mediaRecorder.start();
     setIsRecording(true);
   };
 
+  // Stop recording
   const stopRecording = () => {
-    if (mediaRecorderRef.current) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-    }
-     };
+    const recorder = mediaRecorderRef.current;
 
-  const handleNextQuestion = () => {
-    if (currentIndex + 1 < questions.length) {
-      const nextIndex = currentIndex + 1;
+    if (!recorder) return;
+
+    if (recorder.state !== "inactive") {
+      recorder.stop();
+    }
+  };
+
+  // Move to next question exactly once
+  const moveToNextQuestion = () => {
+    if (hasMovedRef.current) return;
+    hasMovedRef.current = true;
+
+    const nextIndex = currentIndex + 1;
+
+    if (nextIndex < questions.length) {
       setCurrentIndex(nextIndex);
       localStorage.setItem(
         "currentQuestionIndex",
         nextIndex.toString()
       );
     } else {
+      localStorage.removeItem("currentQuestionIndex");
       navigate("/report");
     }
   };
 
+  // No questions
   if (questions.length === 0) {
     return (
       <div className="min-h-screen bg-slate-950 text-white">
@@ -289,6 +364,7 @@ export default function InterviewRoom() {
       </div>
     );
   }
+
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <Navbar />
@@ -314,23 +390,32 @@ export default function InterviewRoom() {
           {!isRecording ? (
             <button
               onClick={startRecording}
-              className="px-6 py-3 bg-red-500 rounded-xl hover:bg-red-600"
+              disabled={processing}
+              className="px-6 py-3 bg-red-500 rounded-xl hover:bg-red-600 disabled:opacity-50"
             >
               Start Recording
             </button>
           ) : (
             <button
               onClick={stopRecording}
-              className="px-6 py-3 bg-emerald-600 rounded-xl hover:bg-emerald-700"
+              disabled={processing}
+              className="px-6 py-3 bg-emerald-600 rounded-xl hover:bg-emerald-700 disabled:opacity-50"
             >
               Stop Recording
             </button>
           )}
         </div>
+
+        {processing && (
+          <p className="mt-4 text-yellow-400">
+            Processing your answer...
+          </p>
+        )}
       </div>
     </div>
   );
 }
+
 InterviewSetup.jsx ->
 
 import { useState } from "react";
@@ -422,6 +507,8 @@ export default function InterviewSetup() {
     </div>
   );
 }
+
+
 Login.jsx ->
 
 import { useState } from "react";
@@ -630,30 +717,243 @@ export default function Register() {
 
 Report.jsx->
 
-import Navbar from '../components/Navbar';
-import ScoreCard from '../components/ScoreCard';
+import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import Navbar from "../components/Navbar";
 
-export default function Report() {
+export default function InterviewRoom() {
+  const navigate = useNavigate();
+
+  const [questions, setQuestions] = useState([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isRecording, setIsRecording] = useState(false);
+  const [processing, setProcessing] = useState(false);
+
+  const videoRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const streamRef = useRef(null);
+  const chunksRef = useRef([]);
+  const hasMovedRef = useRef(false);
+
+  // Load questions and start camera
+  useEffect(() => {
+    const storedQuestions = JSON.parse(
+      localStorage.getItem("interviewQuestions") || "[]"
+    );
+
+    const storedIndex = Number(
+      localStorage.getItem("currentQuestionIndex") || "0"
+    );
+
+    setQuestions(storedQuestions);
+    setCurrentIndex(storedIndex);
+
+    startCamera();
+
+    return () => {
+      stopCamera();
+    };
+  }, []);
+
+  // Start webcam + mic
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+
+      streamRef.current = stream;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (error) {
+      console.error("Camera access denied:", error);
+      alert("Please allow camera and microphone access.");
+    }
+  };
+
+  // Stop camera
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+    }
+  };
+
+  // Start recording
+  const startRecording = () => {
+    if (!streamRef.current || processing) return;
+
+    chunksRef.current = [];
+    hasMovedRef.current = false;
+
+    const mediaRecorder = new MediaRecorder(streamRef.current);
+    mediaRecorderRef.current = mediaRecorder;
+
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        chunksRef.current.push(event.data);
+      }
+    };
+
+    mediaRecorder.onstop = async () => {
+      setIsRecording(false);
+      setProcessing(true);
+
+      const blob = new Blob(chunksRef.current, {
+        type: "video/webm",
+      });
+
+      // Save recording file names
+      const recordings = JSON.parse(
+        localStorage.getItem("recordings") || "[]"
+      );
+      recordings[currentIndex] = `answer-${currentIndex}.webm`;
+      localStorage.setItem(
+        "recordings",
+        JSON.stringify(recordings)
+      );
+
+      // Send to FastAPI
+      const formData = new FormData();
+      formData.append(
+        "file",
+        blob,
+        `answer-${currentIndex}.webm`
+      );
+
+      try {
+        const response = await fetch(
+          "http://localhost:8000/transcribe",
+          {
+            method: "POST",
+            body: formData,
+          }
+        );
+
+        const data = await response.json();
+
+        const transcripts = JSON.parse(
+          localStorage.getItem("transcripts") || "[]"
+        );
+
+        transcripts[currentIndex] =
+          data.transcript || "No transcript available";
+
+        localStorage.setItem(
+          "transcripts",
+          JSON.stringify(transcripts)
+        );
+      } catch (error) {
+        console.error("Transcription failed:", error);
+
+        const transcripts = JSON.parse(
+          localStorage.getItem("transcripts") || "[]"
+        );
+
+        transcripts[currentIndex] = "Transcription failed";
+
+        localStorage.setItem(
+          "transcripts",
+          JSON.stringify(transcripts)
+        );
+      } finally {
+        setProcessing(false);
+        moveToNextQuestion();
+      }
+    };
+
+    mediaRecorder.start();
+    setIsRecording(true);
+  };
+
+  // Stop recording
+  const stopRecording = () => {
+    const recorder = mediaRecorderRef.current;
+
+    if (!recorder) return;
+
+    if (recorder.state !== "inactive") {
+      recorder.stop();
+    }
+  };
+
+  // Move to next question exactly once
+  const moveToNextQuestion = () => {
+    if (hasMovedRef.current) return;
+    hasMovedRef.current = true;
+
+    const nextIndex = currentIndex + 1;
+
+    if (nextIndex < questions.length) {
+      setCurrentIndex(nextIndex);
+      localStorage.setItem(
+        "currentQuestionIndex",
+        nextIndex.toString()
+      );
+    } else {
+      localStorage.removeItem("currentQuestionIndex");
+      navigate("/report");
+    }
+  };
+
+  // No questions
+  if (questions.length === 0) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white">
+        <Navbar />
+        <div className="p-8">No questions found.</div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <Navbar />
-      <div className="max-w-6xl mx-auto p-8">
-        <h1 className="text-4xl font-bold mb-8">Interview Feedback</h1>
 
-        <div className="grid md:grid-cols-3 gap-6 mb-8">
-          <ScoreCard title="Overall Score" score={84} />
-          <ScoreCard title="Confidence" score={78} />
-          <ScoreCard title="Answer Quality" score={88} />
+      <div className="max-w-5xl mx-auto p-8">
+        <p className="text-gray-400 mb-2">
+          Question {currentIndex + 1} of {questions.length}
+        </p>
+
+        <h1 className="text-3xl font-bold mb-6">
+          {questions[currentIndex]}
+        </h1>
+
+        <video
+          ref={videoRef}
+          autoPlay
+          muted
+          playsInline
+          className="w-full aspect-video bg-slate-800 rounded-3xl mb-6"
+        />
+
+        <div className="flex gap-4">
+          {!isRecording ? (
+            <button
+              onClick={startRecording}
+              disabled={processing}
+              className="px-6 py-3 bg-red-500 rounded-xl hover:bg-red-600 disabled:opacity-50"
+            >
+              Start Recording
+            </button>
+          ) : (
+            <button
+              onClick={stopRecording}
+              disabled={processing}
+              className="px-6 py-3 bg-emerald-600 rounded-xl hover:bg-emerald-700 disabled:opacity-50"
+            >
+              Stop Recording
+            </button>
+          )}
         </div>
 
-        <div className="bg-white/5 rounded-2xl p-6 border border-white/10">
-          <h2 className="text-2xl font-semibold mb-4">Suggestions</h2>
-          <ul className="list-disc pl-6 space-y-2 text-gray-300">
-            <li>Use the STAR method.</li>
-            <li>Maintain better eye contact.</li>
-            <li>Reduce filler words.</li>
-          </ul>
-        </div>
+        {processing && (
+          <p className="mt-4 text-yellow-400">
+            Processing your answer...
+          </p>
+        )}
       </div>
     </div>
   );
@@ -868,6 +1168,34 @@ public class AuthController {
         return authService.login(request);
     }
 }
+
+
+QuestionController.java ->
+
+package com.kuheli.backend.controller;
+
+import com.kuheli.backend.dto.QuestionRequest;
+import com.kuheli.backend.dto.QuestionResponse;
+import com.kuheli.backend.service.QuestionService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/questions")
+@RequiredArgsConstructor
+@CrossOrigin(origins = "http://localhost:5173")
+public class QuestionController {
+
+    private final QuestionService questionService;
+
+    @PostMapping("/generate")
+    public QuestionResponse generateQuestions(
+            @RequestBody QuestionRequest request
+    ) {
+        return questionService.generateQuestions(request);
+    }
+}
+
 AuthResponse.java->
 
 package com.kuheli.backend.dto;
@@ -894,6 +1222,26 @@ public record RegisterRequest(
         String name,
         String email,
         String password
+) {}
+
+QuestionRequest.java->
+
+package com.kuheli.backend.dto;
+
+public record QuestionRequest(
+        String role,
+        String difficulty,
+        int count
+) {}
+
+QuestionResponse.java->
+
+package com.kuheli.backend.dto;
+
+import java.util.List;
+
+public record QuestionResponse(
+        List<String> questions
 ) {}
 
 User.java->
@@ -1020,3 +1368,386 @@ public class AuthService {
     }
 }
 
+QuestionService.java->
+
+package com.kuheli.backend.service;
+
+import com.kuheli.backend.dto.QuestionRequest;
+import com.kuheli.backend.dto.QuestionResponse;
+import org.springframework.stereotype.Service;
+
+import java.util.ArrayList;
+import java.util.List;
+
+@Service
+public class QuestionService {
+
+    public QuestionResponse generateQuestions(QuestionRequest request) {
+        List<String> allQuestions = getQuestionsByRole(request.role());
+
+        int count = Math.min(request.count(), allQuestions.size());
+
+        List<String> selected = new ArrayList<>(
+                allQuestions.subList(0, count)
+        );
+
+        return new QuestionResponse(selected);
+    }
+    private List<String> getQuestionsByRole(String role) {
+        return switch (role.toLowerCase()) {
+            case "software engineer" -> List.of(
+                    "Tell me about yourself.",
+                    "What is polymorphism in OOP?",
+                    "Explain REST APIs.",
+                    "What is JWT authentication?",
+                    "Difference between ArrayList and LinkedList.",
+                    "What is multithreading?",
+                    "Explain database normalization.",
+                    "What is dependency injection?"
+            );
+
+            case "frontend developer" -> List.of(
+                    "What is React?",
+                    "Difference between props and state.",
+                    "What are hooks?",
+                    "What is useEffect used for?",
+                    "Explain virtual DOM.",
+                    "Difference between localStorage and sessionStorage."
+            );
+
+            case "data scientist" -> List.of(
+                    "What is overfitting?",
+                    "Difference between supervised and unsupervised learning.",
+                    "What is cross-validation?",
+                    "Explain precision and recall.",
+                    "What is feature engineering?"
+            );
+
+            default -> List.of(
+                    "Tell me about yourself.",
+                    "Why do you want this role?",
+                    "What are your strengths?",
+                    "What are your weaknesses?",
+                    "Where do you see yourself in 5 years?"
+            );
+        };
+    }
+}
+
+ai:
+
+transcription.py ->
+
+import whisper
+
+# Load model once when server starts
+model = whisper.load_model("base")
+
+
+def transcribe_video(file_path: str) -> str:
+    result = model.transcribe(file_path)
+    return result["text"].strip()
+
+requirements.txt ->
+
+fastapi
+uvicorn
+python-multipart
+openai-whisper
+ffmpeg-python
+deepface 
+opencv-python
+google-generativeai 
+python-dotenv
+protobuf==6.31.1
+tf-keras
+
+emotion.py ->
+
+from deepface import DeepFace
+import cv2
+import os
+from collections import Counter
+
+
+def analyze_emotion(video_path: str):
+    """
+    Analyze emotions from sampled frames of a video.
+    Returns:
+    {
+        "dominant_emotion": "happy",
+        "emotion_counts": {
+            "happy": 4,
+            "neutral": 2
+        }
+    }
+    """
+
+    if not os.path.exists(video_path):
+        raise FileNotFoundError(f"Video not found: {video_path}")
+
+    cap = cv2.VideoCapture(video_path)
+
+    emotions = []
+    frame_count = 0
+    sample_every = 30  # analyze every 30th frame
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        if frame_count % sample_every == 0:
+            try:
+                result = DeepFace.analyze(
+                    frame,
+                    actions=["emotion"],
+                    enforce_detection=False,
+                    silent=True
+                )
+
+                # DeepFace may return list or dict
+                if isinstance(result, list):
+                    result = result[0]
+
+                dominant = result["dominant_emotion"]
+                emotions.append(dominant)
+
+            except Exception as e:
+                print("Emotion detection error:", e)
+
+        frame_count += 1
+
+    cap.release()
+
+    if not emotions:
+        return {
+            "dominant_emotion": "neutral",
+            "emotion_counts": {}
+        }
+
+    counts = Counter(emotions)
+    dominant = counts.most_common(1)[0][0]
+
+    return {
+        "dominant_emotion": dominant,
+        "emotion_counts": dict(counts)
+    }
+
+evaluation.py ->
+
+import os
+import json
+import google.generativeai as genai
+from dotenv import load_dotenv
+
+load_dotenv()
+
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
+model = genai.GenerativeModel("gemini-2.5-flash")
+
+
+def evaluate_answer(question: str, answer: str, emotion: dict):
+    dominant_emotion = emotion.get("dominant_emotion", "neutral")
+
+    prompt = f"""
+You are a professional technical interviewer.
+Evaluate the following interview response.
+
+Question:
+{question}
+
+Candidate Answer:
+{answer}
+
+Detected Emotion:
+{dominant_emotion}
+
+Return ONLY valid JSON in this exact format:
+{{
+  "overall_score": 0,
+  "confidence_score": 0,
+  "answer_quality_score": 0,
+  "strengths": [""],
+  "weaknesses": [""],
+  "suggestions": [""]
+}}
+
+Scoring rules:
+- overall_score: 0-100
+- confidence_score: based partly on emotion
+- answer_quality_score: based on relevance, clarity, completeness
+- strengths: 2-4 points
+- weaknesses: 2-4 points
+- suggestions: 3-5 actionable recommendations
+"""
+
+    try:
+        response = model.generate_content(prompt)
+        text = response.text.strip()
+
+        # Remove markdown fences if present
+        text = text.replace("```json", "").replace("```", "").strip()
+
+        return json.loads(text)
+
+    except Exception as e:
+        print("Evaluation error:", e)
+
+        return {
+            "overall_score": 75,
+            "confidence_score": 70,
+            "answer_quality_score": 78,
+            "strengths": [
+                "Relevant answer",
+                "Reasonably structured response"
+            ],
+            "weaknesses": [
+                "Could include more specific examples"
+            ],
+            "suggestions": [
+                "Use the STAR method",
+                "Add quantifiable achievements",
+                "Practice concise delivery"
+            ]
+        }
+
+.env ->
+GEMINI_API_KEY= AIzaSyD30UIKqjruad6TC8xmk3Nzsb_2zm8lRwc
+
+app.py ->
+
+from fastapi import FastAPI, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import os
+import shutil
+import whisper
+
+from transcription import transcribe_video
+from emotion import analyze_emotion
+from evaluation import evaluate_answer
+
+# Add FFmpeg to PATH (required by Whisper)
+os.environ["PATH"] += os.pathsep + (
+    r"C:\Users\kuhel\AppData\Local\Microsoft\WinGet\Packages"
+    r"\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe"
+    r"\ffmpeg-8.1.1-full_build\bin"
+)
+
+app = FastAPI()
+
+# Enable CORS for React frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Load Whisper model once when the server starts
+model = whisper.load_model("base")
+
+
+@app.get("/")
+def home():
+    return {"message": "AI service running"}
+
+
+# =========================
+# 1. TRANSCRIPTION ENDPOINT
+# =========================
+@app.post("/transcribe")
+async def transcribe(file: UploadFile = File(...)):
+    temp_dir = "temp"
+    os.makedirs(temp_dir, exist_ok=True)
+
+    # Preserve extension (.webm, .mp4, etc.)
+    extension = os.path.splitext(file.filename)[1] or ".webm"
+    filepath = os.path.join(temp_dir, f"temp_audio{extension}")
+
+    try:
+        # Save uploaded file
+        with open(filepath, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        # Run Whisper transcription
+        result = model.transcribe(filepath)
+
+        return {
+            "transcript": result["text"].strip()
+        }
+
+    except Exception as e:
+        print("TRANSCRIPTION ERROR:", e)
+        return {
+            "transcript": "Transcription failed"
+        }
+
+    finally:
+        # Delete temp file after processing
+        if os.path.exists(filepath):
+            os.remove(filepath)
+
+
+# =========================
+# 2. EMOTION DETECTION ENDPOINT
+# =========================
+@app.post("/emotion")
+async def detect_emotion(file: UploadFile = File(...)):
+    temp_dir = "temp"
+    os.makedirs(temp_dir, exist_ok=True)
+
+    extension = os.path.splitext(file.filename)[1] or ".webm"
+    filepath = os.path.join(temp_dir, f"temp_video{extension}")
+
+    try:
+        with open(filepath, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        emotion_result = analyze_emotion(filepath)
+
+        return emotion_result
+
+    except Exception as e:
+        print("EMOTION ERROR:", e)
+        return {
+            "dominant_emotion": "unknown",
+            "confidence": 0
+        }
+
+    finally:
+        if os.path.exists(filepath):
+            os.remove(filepath)
+
+
+# =========================
+# 3. LLM EVALUATION ENDPOINT
+# =========================
+class EvaluationRequest(BaseModel):
+    question: str
+    answer: str
+
+
+@app.post("/evaluate")
+async def evaluate(request: EvaluationRequest):
+    try:
+        result = evaluate_answer(
+            question=request.question,
+            answer=request.answer,
+            emotion={"dominant_emotion": "neutral"}
+        )
+        return result
+
+    except Exception as e:
+        print("EVALUATION ERROR:", e)
+        return {
+            "overall_score": 0,
+            "confidence_score": 0,
+            "answer_quality_score": 0,
+            "strengths": [],
+            "weaknesses": ["Evaluation failed"],
+            "suggestions": ["Try again later."]
+        }

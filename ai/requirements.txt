@@ -3,3 +3,9 @@ uvicorn
 python-multipart
 openai-whisper
 ffmpeg-python
+deepface 
+opencv-python
+google-generativeai 
+python-dotenv
+protobuf==6.31.1
+tf-keras
